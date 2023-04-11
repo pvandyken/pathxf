@@ -59,8 +59,8 @@ WalkTuple: TypeAlias = "tuple[AnyStr, list[AnyStr], list[AnyStr]]"
 class oswalk:
     cache: dict[str, tuple[str]] = {}
 
-    def __init__(self, dirname: str):
-        self.dirname = dirname
+    def __init__(self, dirname: str | Path):
+        self.dirname = str(dirname)
         if str(self.dirname) in self.cache:
             self.iter = iter(self.cache[str(self.dirname)])
             return
@@ -87,6 +87,7 @@ def listfiles(
     pattern: str | Path,
     restriction: dict[str, Sequence[str]] | None = None,
     omit_value: str | None = None,
+    dirs: Sequence[str | Path] | None = None,
 ) -> Iterable[tuple[str, dict[str, str]]]:
     """Yield a tuple of existing filepaths for the given pattern.
 
@@ -96,6 +97,7 @@ def listfiles(
         pattern (str):       a filepattern. Wildcards are specified in snakemake syntax, e.g. "{id}.txt"
         restriction (dict):  restrict to wildcard values given in this dictionary
         omit_value (str):    wildcard value to omit
+        dirs:                Specified directories to search
 
     Yields:
         tuple: The next file matching the pattern, and the corresponding wildcards object
@@ -116,10 +118,13 @@ def listfiles(
         )
     pattern_regex = re.compile(regex(pattern, re_patterns), re.VERBOSE)
 
-    for path in oswalk(dirname):
-        match = re.match(pattern_regex, path)
-        if match:
-            yield path, dict(match.groupdict())
+    for dir in dirs or [dirname]:
+        if Path(dir).resolve() != Path(dirname).resolve() and Path(dirname) not in Path(dir).parents:
+            continue
+        for path in oswalk(str(dir)):
+            match = re.match(pattern_regex, path)
+            if match:
+                yield path, dict(match.groupdict())
 
 
 class MissingDict(dict):

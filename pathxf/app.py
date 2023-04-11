@@ -5,7 +5,7 @@ import itertools as it
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 import more_itertools as itx
 import typer
@@ -60,6 +60,11 @@ class IndexCache(dict[Spec, dict[str, str]]):
         for file in self.dir.joinpath("index").iterdir():
             os.remove(file)
 
+    def rm(self, spec: Spec):
+        name = hash_container(spec)
+        if self.contains(name):
+            os.remove(self.index(name))
+
     def __getitem__(self, spec: Spec):
         name = hash_container(spec)
         if self.contains(name):
@@ -79,11 +84,11 @@ class IndexCache(dict[Spec, dict[str, str]]):
         return self.contains(name)
 
 
-def index(config: Spec):
+def index(config: Spec, limit: Sequence[Path] | None = None):
     maps: dict[str, str] = {}
     for group in config["maps"]:
         if not "comps" in group:
-            for inp, wcards in listfiles(Path(config["input"], group["root"])):
+            for inp, wcards in listfiles(Path(config["input"], group["root"]), dirs=limit):
                 wcards = dict(wcards.items())
                 try:
                     maps[group["out"].format(**wcards)] = inp
@@ -97,7 +102,7 @@ def index(config: Spec):
             itx.always_iterable(group["root"]), list(group["comps"].items())
         ):
             entityspecs = _merge_conditionals(_entityspecs)
-            for inp, wcards in listfiles(Path(config["input"], root + path)):
+            for inp, wcards in listfiles(Path(config["input"], root + path), dirs=limit):
                 wcards = dict(wcards.items())
                 spec = None
                 for _spec in entityspecs:
@@ -136,15 +141,48 @@ def index(config: Spec):
                     )
     return maps
 
+def _normalize_limit(limits: Sequence[Path]):
+    viewed: set[Path] = set()
+    result: list[Path] = []
+    for limit in limits:
+        resolved = limit.resolve()
+        discard = False
+        for view in viewed:
+            if view in resolved.parents:
+                discard = True
+                break
+        if not discard:
+            result.append(limit)
+            viewed.add(resolved)
+    return result
+
 
 def main(
     config: Path,
-    input: Optional[Path] = Option(None, "-i", help="Override the input field in the config"),
-    output: Optional[Path] = Option(None, "-o", help="Override the ouptut field in the config"),
-    do_index: bool = Option(False, "--index", help="Force reindexing of the filesystem"),
+    input: Optional[Path] = Option(
+        None, "-i", help="Override the input field in the config"
+    ),
+    output: Optional[Path] = Option(
+        None, "-o", help="Override the ouptut field in the config"
+    ),
+    do_index: bool = Option(
+        False, "--index", help="Force reindexing of the filesystem"
+    ),
+    limit: Optional[list[Path]] = Option(
+        None, help="limit fs search to specific directories"
+    ),
     purge: bool = Option(False, help="Remove all cached indexes"),
-    _print: bool = Option(False, "--print", "-p", help="Print the file mapping as json, without doing any renaming"),
-    inverse: bool = Option(False, "-v", help="Print list of files in the input directory not indexed, formatted as json"),
+    _print: bool = Option(
+        False,
+        "--print",
+        "-p",
+        help="Print the file mapping as json, without doing any renaming",
+    ),
+    inverse: bool = Option(
+        False,
+        "-v",
+        help="Print list of files in the input directory not indexed, formatted as json",
+    ),
 ):
     cache = IndexCache()
     if purge:
@@ -157,7 +195,7 @@ def main(
     if output is not None:
         config_obj["output"] = str(output)
     if do_index or config_obj not in cache:
-        maps = index(config_obj)
+        maps = index(config_obj, limit=_normalize_limit(limit) if limit else None)
         cache[config_obj] = maps
     else:
         maps = cache[config_obj]
@@ -166,12 +204,13 @@ def main(
         return
     if inverse:
         unused: list[str] = []
-        for f in oswalk(config_obj["input"]):
-            if Path(f).is_dir():
-                continue
-            if f in maps:
-                continue
-            unused.append(f)
+        for d in limit or [config_obj["input"]]:
+            for f in oswalk(d):
+                if Path(f).is_dir():
+                    continue
+                if f in maps:
+                    continue
+                unused.append(f)
         print(json.dumps(unused))
         return
 
@@ -181,6 +220,7 @@ def main(
             os.symlink(
                 os.path.relpath(Path(src).resolve(), Path(dest).resolve().parent), dest
             )
+    cache.rm(config_obj)
 
 
 def run():
