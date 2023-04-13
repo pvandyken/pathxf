@@ -119,7 +119,10 @@ def listfiles(
     pattern_regex = re.compile(regex(pattern, re_patterns), re.VERBOSE)
 
     for dir in dirs or [dirname]:
-        if Path(dir).resolve() != Path(dirname).resolve() and Path(dirname) not in Path(dir).parents:
+        if (
+            Path(dir).resolve() != Path(dirname).resolve()
+            and Path(dirname) not in Path(dir).parents
+        ):
             continue
         for path in oswalk(str(dir)):
             match = re.match(pattern_regex, path)

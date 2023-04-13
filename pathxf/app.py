@@ -19,11 +19,6 @@ from pathxf.utils import dict_merge, hash_container, listfiles, oswalk
 
 app = Typer()
 
-cache = Path(".cache")
-if cache.exists():
-    with cache.open() as f:
-        maps = json.load(f)
-
 
 def _merge_conditionals(compspec: CompSpec | list[CompSpec]) -> list[CompSpec]:
     if isinstance(compspec, list):
@@ -88,7 +83,9 @@ def index(config: Spec, limit: Sequence[Path] | None = None):
     maps: dict[str, str] = {}
     for group in config["maps"]:
         if not "comps" in group:
-            for inp, wcards in listfiles(Path(config["input"], group["root"]), dirs=limit):
+            for inp, wcards in listfiles(
+                Path(config["input"], group["root"]), dirs=limit
+            ):
                 wcards = dict(wcards.items())
                 try:
                     maps[group["out"].format(**wcards)] = inp
@@ -102,7 +99,9 @@ def index(config: Spec, limit: Sequence[Path] | None = None):
             itx.always_iterable(group["root"]), list(group["comps"].items())
         ):
             entityspecs = _merge_conditionals(_entityspecs)
-            for inp, wcards in listfiles(Path(config["input"], root + path), dirs=limit):
+            for inp, wcards in listfiles(
+                Path(config["input"], root + path), dirs=limit
+            ):
                 wcards = dict(wcards.items())
                 spec = None
                 for _spec in entityspecs:
@@ -140,6 +139,7 @@ def index(config: Spec, limit: Sequence[Path] | None = None):
                         f"Expected: {spec['bids']}"
                     )
     return maps
+
 
 def _normalize_limit(limits: Sequence[Path]):
     viewed: set[Path] = set()
