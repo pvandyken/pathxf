@@ -4,6 +4,8 @@ from typing import TypedDict
 
 from typing_extensions import NotRequired
 
+class OutputSpec(TypedDict):
+    bids: NotRequired[dict[str, str]]
 
 class CompSpec(TypedDict):
     when: NotRequired[dict[str, list[str]]]
@@ -22,4 +24,5 @@ class MapSpec(TypedDict):
 class Spec(TypedDict):
     input: str
     output: str
+    all: NotRequired[OutputSpec]
     maps: list[MapSpec]

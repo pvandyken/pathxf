@@ -5,6 +5,7 @@ import itertools as it
 import json
 import os
 from pathlib import Path
+import re
 from typing import Optional, Sequence
 
 import more_itertools as itx
@@ -126,15 +127,22 @@ def index(config: Spec, limit: Sequence[Path] | None = None):
                 outtemplate = bids(
                     root=outroot,
                     **{
+                        **config.get("all", {}).get("bids", {}),
                         **group.get("all", {}),
                         **spec["bids"],
                     },
                 )
                 try:
-                    maps[inp] = outtemplate.format(**wcards)
+                    maps[inp] = outtemplate.format(
+                        **{
+                            **config.get("all", {}).get("bids", {}),
+                            **wcards
+                        }
+                    )
                 except KeyError:
                     raise Exception(
                         f"Not all wildcards found in input '{inp}'\n"
+                        f"Template: {outtemplate}\n",
                         f"Found: {wcards}\n"
                         f"Expected: {spec['bids']}"
                     )
@@ -155,6 +163,18 @@ def _normalize_limit(limits: Sequence[Path]):
             result.append(limit)
             viewed.add(resolved)
     return result
+
+def _bids_callback(value: list[str] | None):
+    if value is None:
+        return value
+    mapping_re = re.compile(r'\w+=\w+')
+    if len(
+        bad_vals := [s for s in value if re.match(mapping_re, s) is None]
+    ):
+        raise TypeError(
+            "bids entities must be specified as 'entity=value' strings, got:\n\t" + 
+            "\n\t".join(bad_vals)
+        )
 
 
 def main(
@@ -183,7 +203,14 @@ def main(
         "-v",
         help="Print list of files in the input directory not indexed, formatted as json",
     ),
+    _bids: Optional[list[str]] = Option(
+        None,
+        "--bids",
+        help="Provide entity=value pairs to be provided as defaults to every output "
+        "made with bids",
+    )
 ):
+    _bids_callback(_bids)
     cache = IndexCache()
     if purge:
         cache.purge()
@@ -194,6 +221,10 @@ def main(
         config_obj["input"] = str(input)
     if output is not None:
         config_obj["output"] = str(output)
+    if _bids is not None:
+        if not "all" in config_obj:
+            config_obj["all"] = {}
+        config_obj["all"]["bids"] = dict(field.split("=") for field in _bids)
     if do_index or config_obj not in cache:
         maps = index(config_obj, limit=_normalize_limit(limit) if limit else None)
         cache[config_obj] = maps
