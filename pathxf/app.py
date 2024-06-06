@@ -14,10 +14,12 @@ import typer
 import yaml
 from appdirs import user_cache_dir
 from typer import Option, Typer, Argument
+from snakebids import bids, set_bids_spec
 
-from pathxf.bids import bids
 from pathxf.spec import CompSpec, Spec
 from pathxf.utils import dict_merge, hash_container, listfiles, oswalk
+
+set_bids_spec("v0_11_0")
 
 app = Typer()
 
@@ -260,9 +262,9 @@ def main(
     for src, dest in maps.items():
         if Path(src).exists() and not Path(dest).exists():
             Path(dest).parent.mkdir(parents=True, exist_ok=True)
-            func = shutil.copyfile if copy else os.symlink
-            if not copy:
-                src = os.path.relpath(Path(src).resolve(), Path(dest).resolve().parent)
+            func = shutil.copyfile if copy else os.link
+            # if not copy or False:
+            #     src = os.path.relpath(Path(src).resolve(), Path(dest).resolve().parent)
             func(src, dest)
     cache.rm(config_obj)
 

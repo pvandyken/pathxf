@@ -8,6 +8,7 @@ packages = [{include = "pathxf"}]
 
 [tool.poetry.dependencies]
 python = ">=3.9,<3.12"
+snakebids = "^0.12"
 more-itertools = "^9.0"
 typer = "^0.7.0"
 appdirs = "^1.4.4"
