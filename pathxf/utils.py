@@ -125,7 +125,7 @@ def listfiles(
         ):
             continue
         for path in oswalk(str(dir)):
-            match = re.match(pattern_regex, path)
+            match = re.match(pattern_regex, str(Path(path)))
             if match:
                 yield path, dict(match.groupdict())
 
@@ -143,24 +143,24 @@ formatter = string.Formatter()
 WILDCARD_REGEX = re.compile(
     r"""
 \{
-    (?=(                                      # Use lookahead for performance 
+    (?=(                                      # Use lookahead for performance
         (?:
             (?: \s*(?P<name>[a-zA-Z]\w*) ) |  # Either a wildcard name
             (?= \s*: )                        # or a future colon
         )
         (?:
             (?:
-                (?: (?<!:)  \s*, ) |  # either a comma with no preceding colon
+                (?: (?<!:)  \s*: ) |  # either a colon with no preceding colon
                 (?: (?<=\{) \s*: )    # or a colon immediately following the brace
             )
             \s*
             (?P<constraint>
-                (?: 
+                (?:
                     \\\{ | \\\}  |   # Escaped braces
                     [^{}] |          # Non-brace characters
                     \{\d+(,\d+)?\}   # or at nested braces at most 1 level (for quant)
-                )* 
-            ) 
+                )*
+            )
         )?
         \s*
     ))\1

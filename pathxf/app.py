@@ -6,13 +6,14 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 from typing import Optional, Sequence
 
 import more_itertools as itx
 import typer
 import yaml
 from appdirs import user_cache_dir
-from typer import Option, Typer
+from typer import Option, Typer, Argument
 
 from pathxf.bids import bids
 from pathxf.spec import CompSpec, Spec
@@ -21,7 +22,9 @@ from pathxf.utils import dict_merge, hash_container, listfiles, oswalk
 app = Typer()
 
 
-def _merge_conditionals(compspec: CompSpec | list[CompSpec]) -> list[CompSpec]:
+def _merge_conditionals(compspec: CompSpec | list[CompSpec] | str) -> list[CompSpec]:
+    if isinstance(compspec, str):
+        return [CompSpec(out=compspec)]
     if isinstance(compspec, list):
         return _merge_conditionals(CompSpec(conditions=compspec))
     if not "conditions" in compspec:
@@ -123,15 +126,18 @@ def index(config: Spec, limit: Sequence[Path] | None = None):
                     wcards[ent] = _m.get(wcards[ent], wcards[ent])
 
                 outroot = os.path.join(config.get("output", ""), group.get("out", ""))
-                assert "bids" in spec
-                outtemplate = bids(
-                    root=outroot,
-                    **{
-                        **config.get("all", {}).get("bids", {}),
-                        **group.get("all", {}),
-                        **spec["bids"],
-                    },
-                )
+                if "bids" in spec:
+                    outtemplate = bids(
+                        root=outroot,
+                        **{
+                            **config.get("all", {}).get("bids", {}),
+                            **group.get("all", {}),
+                            **spec["bids"],
+                        },
+                    )
+                else:
+                    assert "out" in spec
+                    outtemplate = str(Path(outroot, spec["out"]))
                 try:
                     maps[inp] = outtemplate.format(
                         **{
@@ -178,8 +184,8 @@ def _bids_callback(value: list[str] | None):
 
 
 def main(
-    config: Path,
-    input: Optional[Path] = Option(
+    config: Optional[Path] = Argument(None),
+    input: Optional[str] = Option(
         None, "-i", help="Override the input field in the config"
     ),
     output: Optional[Path] = Option(
@@ -191,6 +197,7 @@ def main(
     limit: Optional[list[Path]] = Option(
         None, help="limit fs search to specific directories"
     ),
+    copy: bool = Option(False, help="Perform copy instead of symlink"),
     purge: bool = Option(False, help="Remove all cached indexes"),
     _print: bool = Option(
         False,
@@ -215,12 +222,17 @@ def main(
     if purge:
         cache.purge()
         return
-    with config.open() as f:
-        config_obj: Spec = yaml.safe_load(f)
-    if input is not None:
-        config_obj["input"] = str(input)
-    if output is not None:
-        config_obj["output"] = str(output)
+    if config:
+        with config.open() as f:
+            config_obj: Spec = yaml.safe_load(f)
+        if input is not None:
+            config_obj["input"] = str(input)
+        if output is not None:
+            config_obj["output"] = str(output)
+    else:
+        config_obj = {"maps": [{"root": "", "comps": {str(input): str(output)}}]}
+        config_obj["input"] = ""
+        config_obj["output"] = ""
     if _bids is not None:
         if not "all" in config_obj:
             config_obj["all"] = {}
@@ -248,9 +260,10 @@ def main(
     for src, dest in maps.items():
         if Path(src).exists() and not Path(dest).exists():
             Path(dest).parent.mkdir(parents=True, exist_ok=True)
-            os.symlink(
-                os.path.relpath(Path(src).resolve(), Path(dest).resolve().parent), dest
-            )
+            func = shutil.copyfile if copy else os.symlink
+            if not copy:
+                src = os.path.relpath(Path(src).resolve(), Path(dest).resolve().parent)
+            func(src, dest)
     cache.rm(config_obj)
 
 
